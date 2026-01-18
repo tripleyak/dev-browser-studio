@@ -1,7 +1,7 @@
 {
-  "name": "browser-qa-kit",
+  "name": "dev-browser-studio",
   "version": "1.0.0",
-  "description": "Browser automation toolkit with built-in video recording for UI/UX testing, debugging, and quality assurance",
+  "description": "Browser automation studio with built-in video recording for UI/UX testing, debugging, and quality assurance",
   "type": "module",
   "imports": {
     "@/*": "./src/*"
@@ -31,7 +31,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tripleyak/browser-qa-kit.git"
+    "url": "https://github.com/tripleyak/dev-browser-studio.git"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.7",

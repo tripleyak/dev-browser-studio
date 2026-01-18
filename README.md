@@ -1,4 +1,4 @@
-# Browser QA Kit
+# Dev Browser Studio
 
 **Version 1.0.0**
 
@@ -6,9 +6,9 @@
 
 ---
 
-## What is Browser QA Kit?
+## What is Dev Browser Studio?
 
-Browser QA Kit is a tool that lets you automate web browser actions (like clicking buttons, filling forms, and navigating websites) while **recording everything on video**. Think of it as having a robot that can use websites for you and record what it sees, so you can review it later.
+Dev Browser Studio is a tool that lets you automate web browser actions (like clicking buttons, filling forms, and navigating websites) while **recording everything on video**. Think of it as having a robot that can use websites for you and record what it sees, so you can review it later.
 
 This is especially useful for:
 
@@ -18,7 +18,7 @@ This is especially useful for:
 - **Documentation** - Create video evidence of how features work
 - **Training** - Record workflows to show others how to use a website
 
-## Why Choose Browser QA Kit?
+## Why Choose Dev Browser Studio?
 
 ### The Problem with Other Tools
 
@@ -26,9 +26,9 @@ Most browser automation tools (like Playwright or Selenium) can take screenshots
 
 ### The Solution
 
-Browser QA Kit gives you **on-demand video recording**. You control exactly when recording starts and stops, and you get the video file immediately. No waiting, no complicated setup.
+Dev Browser Studio gives you **on-demand video recording**. You control exactly when recording starts and stops, and you get the video file immediately. No waiting, no complicated setup.
 
-| Feature | Browser QA Kit | Standard Playwright | Playwright MCP |
+| Feature | Dev Browser Studio | Standard Playwright | Playwright MCP |
 |---------|---------------|---------------------|----------------|
 | Video Recording | Start/stop anytime | Only automatic, full session | No |
 | Video Available | Immediately | After page closes | N/A |
@@ -47,7 +47,7 @@ Browser QA Kit gives you **on-demand video recording**. You control exactly when
 
 ## Prerequisites
 
-Before you can use Browser QA Kit, you need to install a few things on your computer.
+Before you can use Dev Browser Studio, you need to install a few things on your computer.
 
 ### Required Software
 
@@ -110,12 +110,12 @@ If you use Claude Code, this is the easiest way to get started.
 
 **Step 1: Clone the repository**
 ```bash
-git clone https://github.com/tripleyak/browser-qa-kit.git ~/.claude/skills/browser-qa-kit
+git clone https://github.com/tripleyak/dev-browser-studio.git ~/.claude/skills/dev-browser-studio
 ```
 
 **Step 2: Install dependencies**
 ```bash
-cd ~/.claude/skills/browser-qa-kit
+cd ~/.claude/skills/dev-browser-studio
 npm install
 ```
 
@@ -129,8 +129,8 @@ If you want to use this without Claude Code:
 
 **Step 1: Clone the repository**
 ```bash
-git clone https://github.com/tripleyak/browser-qa-kit.git
-cd browser-qa-kit
+git clone https://github.com/tripleyak/dev-browser-studio.git
+cd dev-browser-studio
 ```
 
 **Step 2: Install dependencies**
@@ -216,7 +216,7 @@ Your video will be saved in the `recordings/` folder!
 Before you can automate browsers, start the server:
 
 ```bash
-# From the browser-qa-kit directory
+# From the dev-browser-studio directory
 npm run start-server
 ```
 
@@ -284,7 +284,7 @@ await page.screenshot({ path: "full-page.png", fullPage: true });
 
 ### Video Recording
 
-This is what makes Browser QA Kit special!
+This is what makes Dev Browser Studio special!
 
 #### Start Recording
 
@@ -319,7 +319,7 @@ if (status.isRecording) {
 
 ### AI-Friendly Page Inspection
 
-Browser QA Kit can describe what's on a page in a format that's easy for AI assistants to understand.
+Dev Browser Studio can describe what's on a page in a format that's easy for AI assistants to understand.
 
 ```typescript
 // Get a structured description of the page
@@ -530,7 +530,7 @@ const result = await client.stopRecording("test");
 
 ### What browsers does this support?
 
-Browser QA Kit uses Chromium (the open-source version of Chrome). It's bundled with Playwright, so you don't need to install it separately.
+Dev Browser Studio uses Chromium (the open-source version of Chrome). It's bundled with Playwright, so you don't need to install it separately.
 
 ### Can I use my existing Chrome profile?
 
@@ -565,7 +565,7 @@ npm run start-server -- --headless
 ## Project Structure
 
 ```
-browser-qa-kit/
+dev-browser-studio/
 ├── README.md           # This file
 ├── SKILL.md            # Skill instructions for AI assistants
 ├── package.json        # Project dependencies
@@ -603,7 +603,7 @@ MIT License - feel free to use this in your own projects!
 
 ## Credits
 
-Browser QA Kit is built on top of:
+Dev Browser Studio is built on top of:
 - [Playwright](https://playwright.dev) - Browser automation library
 - [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) - For video recording
 - Original concept from [dev-browser](https://github.com/SawyerHood/dev-browser) by Sawyer Hood

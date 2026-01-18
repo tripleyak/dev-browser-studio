@@ -1,9 +1,9 @@
 ---
-name: browser-qa-kit
-description: Browser automation with video recording for UI/UX testing and QA. Use when users ask to test websites, record browser sessions, debug UI issues, perform visual QA, or automate browser workflows with video evidence. Trigger phrases include "record the browser", "test the UI", "capture video of", "debug the page", "QA the website", "visual test", or any browser interaction request requiring video proof.
+name: dev-browser-studio
+description: Browser automation studio with video recording for UI/UX testing and QA. Use when users ask to test websites, record browser sessions, debug UI issues, perform visual QA, or automate browser workflows with video evidence. Trigger phrases include "record the browser", "test the UI", "capture video of", "debug the page", "QA the website", "visual test", or any browser interaction request requiring video proof.
 ---
 
-# Browser QA Kit
+# Dev Browser Studio
 
 Browser automation with built-in video recording for UI/UX testing, debugging, and quality assurance. Write small, focused scripts to accomplish tasks incrementally while capturing video evidence of every interaction.
 
