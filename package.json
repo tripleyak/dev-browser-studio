@@ -1,0 +1,55 @@
+{
+  "name": "browser-qa-kit",
+  "version": "1.0.0",
+  "description": "Browser automation toolkit with built-in video recording for UI/UX testing, debugging, and quality assurance",
+  "type": "module",
+  "imports": {
+    "@/*": "./src/*"
+  },
+  "scripts": {
+    "start-server": "npx tsx scripts/start-server.ts",
+    "start-extension": "npx tsx scripts/start-relay.ts",
+    "dev": "npx tsx --watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "browser-automation",
+    "video-recording",
+    "qa",
+    "testing",
+    "ui-testing",
+    "ux-testing",
+    "quality-assurance",
+    "playwright",
+    "claude-code",
+    "debugging",
+    "frontend-testing",
+    "screen-recording"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/browser-qa-kit.git"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.7",
+    "@hono/node-ws": "^1.2.0",
+    "express": "^4.21.0",
+    "hono": "^4.11.1",
+    "playwright": "^1.57.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.16"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
