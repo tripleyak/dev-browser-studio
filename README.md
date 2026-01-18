@@ -110,7 +110,7 @@ If you use Claude Code, this is the easiest way to get started.
 
 **Step 1: Clone the repository**
 ```bash
-git clone https://github.com/YOUR_USERNAME/browser-qa-kit.git ~/.claude/skills/browser-qa-kit
+git clone https://github.com/tripleyak/browser-qa-kit.git ~/.claude/skills/browser-qa-kit
 ```
 
 **Step 2: Install dependencies**
@@ -129,7 +129,7 @@ If you want to use this without Claude Code:
 
 **Step 1: Clone the repository**
 ```bash
-git clone https://github.com/YOUR_USERNAME/browser-qa-kit.git
+git clone https://github.com/tripleyak/browser-qa-kit.git
 cd browser-qa-kit
 ```
 

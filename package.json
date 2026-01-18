@@ -31,7 +31,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/browser-qa-kit.git"
+    "url": "https://github.com/tripleyak/browser-qa-kit.git"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.7",
