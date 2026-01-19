@@ -11,6 +11,9 @@ import type {
   StopRecordingResponse,
   RecordingStatusResponse,
   GetVideoPathResponse,
+  ConsoleLogEntry,
+  GetConsoleLogsResponse,
+  ClearConsoleLogsResponse,
 } from "./types";
 import { getSnapshotScript } from "./snapshot/browser-script";
 
@@ -255,8 +258,16 @@ export interface DevBrowserClient {
   startRecording: (name: string, options?: RecordingOptions) => Promise<void>;
   /**
    * Stop recording and get the video file path.
+   * Returns enhanced data including console logs and key frame paths.
    */
-  stopRecording: (name: string) => Promise<{ videoPath: string; durationMs: number; frameCount: number }>;
+  stopRecording: (name: string) => Promise<{
+    videoPath: string;
+    durationMs: number;
+    frameCount: number;
+    consoleLogs?: ConsoleLogEntry[];
+    keyFramePaths?: string[];
+    summaryPath?: string;
+  }>;
   /**
    * Check if a page is currently being recorded.
    */
@@ -267,6 +278,15 @@ export interface DevBrowserClient {
    * Video is only available after page is closed.
    */
   getVideoPath: (name: string) => Promise<string | null>;
+  /**
+   * Get console logs captured for a page.
+   * Console logs are captured via CDP when recording or when explicitly enabled.
+   */
+  getConsoleLogs: (name: string) => Promise<ConsoleLogEntry[]>;
+  /**
+   * Clear captured console logs for a page.
+   */
+  clearConsoleLogs: (name: string) => Promise<number>;
 }
 
 export async function connect(serverUrl = "http://localhost:9222"): Promise<DevBrowserClient> {
@@ -513,9 +533,14 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
       }
     },
 
-    async stopRecording(
-      name: string
-    ): Promise<{ videoPath: string; durationMs: number; frameCount: number }> {
+    async stopRecording(name: string): Promise<{
+      videoPath: string;
+      durationMs: number;
+      frameCount: number;
+      consoleLogs?: ConsoleLogEntry[];
+      keyFramePaths?: string[];
+      summaryPath?: string;
+    }> {
       const res = await fetch(
         `${serverUrl}/pages/${encodeURIComponent(name)}/recording/stop`,
         { method: "POST" }
@@ -530,6 +555,9 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
         videoPath: data.videoPath,
         durationMs: data.durationMs ?? 0,
         frameCount: data.frameCount ?? 0,
+        consoleLogs: data.consoleLogs,
+        keyFramePaths: data.keyFramePaths,
+        summaryPath: data.summaryPath,
       };
     },
 
@@ -557,6 +585,33 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
       }
 
       return data.pending ? null : (data.videoPath ?? null);
+    },
+
+    async getConsoleLogs(name: string): Promise<ConsoleLogEntry[]> {
+      const res = await fetch(
+        `${serverUrl}/pages/${encodeURIComponent(name)}/console`
+      );
+
+      if (!res.ok) {
+        throw new Error(`Failed to get console logs: ${res.status}`);
+      }
+
+      const data = (await res.json()) as GetConsoleLogsResponse;
+      return data.logs;
+    },
+
+    async clearConsoleLogs(name: string): Promise<number> {
+      const res = await fetch(
+        `${serverUrl}/pages/${encodeURIComponent(name)}/console`,
+        { method: "DELETE" }
+      );
+
+      if (!res.ok) {
+        throw new Error(`Failed to clear console logs: ${res.status}`);
+      }
+
+      const data = (await res.json()) as ClearConsoleLogsResponse;
+      return data.cleared;
     },
   };
 }

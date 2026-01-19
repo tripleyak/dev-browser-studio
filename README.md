@@ -1,6 +1,6 @@
 # Dev Browser Studio
 
-**Version 1.0.0**
+**Version 1.1.0**
 
 > A powerful browser automation toolkit with built-in video recording for UI/UX testing, debugging, and quality assurance.
 
@@ -32,6 +32,8 @@ Dev Browser Studio gives you **on-demand video recording**. You control exactly 
 |---------|---------------|---------------------|----------------|
 | Video Recording | Start/stop anytime | Only automatic, full session | No |
 | Video Available | Immediately | After page closes | N/A |
+| Console Log Capture | Yes, with timestamps | Manual setup required | No |
+| AI-Parseable Output | Key frames + JSON | No | No |
 | Persistent Pages | Yes | No | No |
 | Recording Control | Full control | No control | N/A |
 
@@ -39,9 +41,11 @@ Dev Browser Studio gives you **on-demand video recording**. You control exactly 
 
 1. **On-Demand Recording** - Start and stop recording whenever you want
 2. **Instant Access** - Get the video file immediately after stopping
-3. **Persistent Pages** - Pages stay open between scripts, so you don't lose your place
-4. **AI-Friendly** - Designed to work with AI assistants like Claude Code
-5. **Simple API** - Easy to use, even if you're new to programming
+3. **Console Log Capture** - Automatically captures console.log/warn/error during recordings
+4. **AI-Parseable Output** - Extracts key frames as images + JSON summary for AI analysis
+5. **Persistent Pages** - Pages stay open between scripts, so you don't lose your place
+6. **AI-Friendly** - Designed to work with AI assistants like Claude Code
+7. **Simple API** - Easy to use, even if you're new to programming
 
 ---
 
@@ -187,11 +191,14 @@ await waitForPageLoad(page);
 // Take a screenshot too (optional)
 await page.screenshot({ path: "screenshot.png" });
 
-// Stop recording and get the video
+// Stop recording and get AI-parseable results
 const result = await client.stopRecording("demo");
 console.log(`Video saved to: ${result.videoPath}`);
 console.log(`Duration: ${result.durationMs}ms`);
 console.log(`Frames captured: ${result.frameCount}`);
+console.log(`Console logs: ${result.consoleLogs?.length ?? 0}`);
+console.log(`Key frames for AI: ${result.keyFramePaths?.join(", ")}`);
+console.log(`Summary JSON: ${result.summaryPath}`);
 
 // Disconnect (the page stays open for later)
 await client.disconnect();
@@ -317,6 +324,52 @@ if (status.isRecording) {
 }
 ```
 
+### AI-Parseable Recording Output
+
+Each recording produces three outputs designed for AI consumption:
+
+1. **Video File** (WebM) - The full recording at `recordings/<timestamp>.webm`
+2. **Key Frame Images** (JPEG) - Evenly-spaced frames that AI assistants can view directly
+3. **Summary JSON** - Structured metadata including console logs
+
+Example summary JSON:
+```json
+{
+  "recording": {
+    "videoPath": "recordings/1705432100000.webm",
+    "durationMs": 5230,
+    "frameCount": 157,
+    "startedAt": "2024-01-16T20:15:00.000Z",
+    "stoppedAt": "2024-01-16T20:15:05.230Z"
+  },
+  "consoleLogs": [
+    {
+      "timestamp": "2024-01-16T20:15:01.234Z",
+      "level": "log",
+      "text": "Button clicked",
+      "url": "https://example.com/app"
+    },
+    {
+      "timestamp": "2024-01-16T20:15:02.567Z",
+      "level": "error",
+      "text": "Failed to fetch data",
+      "url": "https://example.com/app"
+    }
+  ],
+  "keyFrames": [
+    "recordings/1705432100000_frame_0.jpg",
+    "recordings/1705432100000_frame_1.jpg",
+    "recordings/1705432100000_frame_2.jpg"
+  ],
+  "page": {
+    "url": "https://example.com/app",
+    "title": "My Application"
+  }
+}
+```
+
+The key frames allow Claude and other AI assistants to "see" what happened during the recording by viewing the extracted images.
+
 ### AI-Friendly Page Inspection
 
 Dev Browser Studio can describe what's on a page in a format that's easy for AI assistants to understand.
@@ -359,8 +412,10 @@ await button.click();
 | `client.close(name)` | Close a page |
 | `client.disconnect()` | Disconnect from server (pages stay open) |
 | `client.startRecording(name, options?)` | Start video recording |
-| `client.stopRecording(name)` | Stop recording and get video path |
+| `client.stopRecording(name)` | Stop recording and get video + console logs + key frames |
 | `client.getRecordingStatus(name)` | Check if recording is active |
+| `client.getConsoleLogs(name)` | Get captured console logs |
+| `client.clearConsoleLogs(name)` | Clear captured console logs |
 | `client.getAISnapshot(name)` | Get AI-friendly page description |
 | `client.selectSnapshotRef(name, ref)` | Get element by reference ID |
 
@@ -372,6 +427,9 @@ await button.click();
 | `maxHeight` | number | 720 | Maximum video height in pixels |
 | `quality` | number | 80 | JPEG quality (0-100, higher = better quality, larger files) |
 | `everyNthFrame` | number | 1 | Capture every Nth frame (1 = all frames) |
+| `captureConsoleLogs` | boolean | true | Capture console.log/warn/error during recording |
+| `extractKeyFrames` | boolean | true | Extract key frames as separate images for AI viewing |
+| `keyFrameCount` | number | 5 | Number of key frames to extract |
 
 ### Page Options
 
@@ -611,6 +669,14 @@ Dev Browser Studio is built on top of:
 ---
 
 ## Version History
+
+### v1.1.0
+- Console log capture via CDP Runtime API
+- Key frame extraction as JPEG images for AI viewing
+- Recording summary JSON with metadata and logs
+- Enhanced stopRecording response with consoleLogs, keyFramePaths, summaryPath
+- New client methods: getConsoleLogs(), clearConsoleLogs()
+- Updated documentation with AI-parseable output examples
 
 ### v1.0.0 (Initial Release)
 - On-demand video recording with CDP Screencast

@@ -10,6 +10,8 @@ Browser automation with built-in video recording for UI/UX testing, debugging, a
 ## Key Capabilities
 
 - **Video Recording**: Start/stop recording on demand, get video files immediately
+- **Console Log Capture**: Automatically capture console.log/warn/error during recordings
+- **AI-Parseable Output**: Key frames extracted as images + JSON summary for AI analysis
 - **Persistent Pages**: Pages stay open between script executions
 - **AI-Friendly Snapshots**: Structured page inspection optimized for AI assistants
 - **Visual QA**: Perfect for UI testing, debugging, and quality assurance workflows
@@ -87,25 +89,42 @@ const client = await connect();
 const page = await client.page("demo");
 await page.goto("https://example.com");
 
-// Start recording
+// Start recording (console logs captured automatically)
 await client.startRecording("demo", {
-  maxWidth: 1280,   // default: 1280
-  maxHeight: 720,   // default: 720
-  quality: 80,      // JPEG quality 0-100, default: 80
+  maxWidth: 1280,           // default: 1280
+  maxHeight: 720,           // default: 720
+  quality: 80,              // JPEG quality 0-100, default: 80
+  captureConsoleLogs: true, // default: true
+  extractKeyFrames: true,   // default: true - extract frames as images for AI
+  keyFrameCount: 5,         // default: 5 - number of key frames to extract
 });
 
 // Perform interactions...
 await page.click("a");
 await page.screenshot({ path: "tmp/screenshot.png" });
 
-// Stop recording and get video path
-const { videoPath, durationMs, frameCount } = await client.stopRecording("demo");
-console.log(`Video saved to: ${videoPath}`);
+// Stop recording - returns AI-parseable data
+const result = await client.stopRecording("demo");
+console.log(`Video saved to: ${result.videoPath}`);
+console.log(`Duration: ${result.durationMs}ms`);
+console.log(`Frames: ${result.frameCount}`);
+console.log(`Console logs: ${result.consoleLogs?.length ?? 0}`);
+console.log(`Key frames: ${result.keyFramePaths?.join(", ")}`);
+console.log(`Summary JSON: ${result.summaryPath}`);
 
 await client.disconnect();
 ```
 
 Videos are saved to the `recordings/` directory as WebM files (VP9 codec). Requires `ffmpeg` installed for encoding; falls back to saving individual frames if unavailable.
+
+### AI-Parseable Output
+
+Each recording produces:
+- **Video file** (WebM) - The full recording
+- **Key frame images** (JPEG) - 5 evenly-spaced frames that Claude can view directly
+- **Summary JSON** - Metadata + console logs in a structured format
+
+The key frames allow AI assistants to "see" what happened during the recording without processing video.
 
 ## Client API
 
@@ -126,8 +145,12 @@ const element = await client.selectSnapshotRef("name", "e5"); // Get element by 
 
 // Video Recording methods
 await client.startRecording("name"); // Start recording page
-const { videoPath, durationMs, frameCount } = await client.stopRecording("name"); // Stop and get video
+const result = await client.stopRecording("name"); // Stop and get video + logs + key frames
 const status = await client.getRecordingStatus("name"); // Check if recording
+
+// Console Log methods
+const logs = await client.getConsoleLogs("name"); // Get captured console logs
+const cleared = await client.clearConsoleLogs("name"); // Clear console logs
 ```
 
 The `page` object is a standard Playwright Page.

@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response } from "express";
 import { chromium, type BrowserContext, type CDPSession, type Page } from "playwright";
-import { mkdirSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import type { Socket } from "net";
 import type {
@@ -15,6 +15,10 @@ import type {
   StopRecordingResponse,
   RecordingStatusResponse,
   GetVideoPathResponse,
+  ConsoleLogEntry,
+  GetConsoleLogsResponse,
+  ClearConsoleLogsResponse,
+  RecordingSummary,
 } from "./types";
 import { encodeFramesToVideo } from "./video-encoder";
 
@@ -56,6 +60,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
       setTimeout(() => reject(new Error(`Timeout: ${message}`)), ms)
     ),
   ]);
+}
+
+// Map CDP console type to our log level
+function mapConsoleType(type: string): ConsoleLogEntry["level"] {
+  switch (type) {
+    case "warning":
+      return "warn";
+    case "error":
+      return "error";
+    case "info":
+      return "info";
+    case "debug":
+      return "debug";
+    case "trace":
+      return "trace";
+    default:
+      return "log";
+  }
 }
 
 export async function serve(options: ServeOptions = {}): Promise<DevBrowserServer> {
@@ -127,6 +149,8 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
     frameBuffer: Buffer[];
     options: RecordingOptions;
     outputPath: string;
+    consoleLogs: ConsoleLogEntry[];
+    recordingStartIndex: number; // Index in page's console logs when recording started
   }
 
   // Registry entry type for page tracking
@@ -134,6 +158,8 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
     page: Page;
     targetId: string;
     recording?: RecordingState;
+    consoleLogs: ConsoleLogEntry[]; // All console logs for this page
+    consoleSession?: CDPSession; // CDP session for console log capture
   }
 
   // Registry: name -> PageEntry
@@ -148,6 +174,78 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
     } finally {
       await cdpSession.detach();
     }
+  }
+
+  // Helper to set up console log capture for a page
+  async function setupConsoleCapture(entry: PageEntry): Promise<void> {
+    try {
+      const cdpSession = await context.newCDPSession(entry.page);
+      entry.consoleSession = cdpSession;
+
+      // Enable Runtime domain for console API calls
+      await cdpSession.send("Runtime.enable");
+
+      // Listen for console API calls
+      cdpSession.on("Runtime.consoleAPICalled", (params) => {
+        const logEntry: ConsoleLogEntry = {
+          timestamp: new Date().toISOString(),
+          level: mapConsoleType(params.type),
+          text: params.args
+            .map((arg) => {
+              if (arg.value !== undefined) return String(arg.value);
+              if (arg.description) return arg.description;
+              if (arg.preview?.description) return arg.preview.description;
+              return arg.type;
+            })
+            .join(" "),
+          url: params.stackTrace?.callFrames?.[0]?.url,
+          lineNumber: params.stackTrace?.callFrames?.[0]?.lineNumber,
+          columnNumber: params.stackTrace?.callFrames?.[0]?.columnNumber,
+        };
+        entry.consoleLogs.push(logEntry);
+      });
+
+      // Also capture exceptions
+      cdpSession.on("Runtime.exceptionThrown", (params) => {
+        const exception = params.exceptionDetails;
+        const logEntry: ConsoleLogEntry = {
+          timestamp: new Date().toISOString(),
+          level: "error",
+          text: exception.exception?.description || exception.text || "Unknown error",
+          url: exception.url,
+          lineNumber: exception.lineNumber,
+          columnNumber: exception.columnNumber,
+        };
+        entry.consoleLogs.push(logEntry);
+      });
+
+      console.log(`Console capture enabled for page`);
+    } catch (err) {
+      console.error("Failed to setup console capture:", err);
+    }
+  }
+
+  // Helper to extract key frames from frame buffer
+  function extractKeyFrames(
+    frameBuffer: Buffer[],
+    count: number,
+    basePath: string
+  ): string[] {
+    if (frameBuffer.length === 0) return [];
+
+    const keyFramePaths: string[] = [];
+    const step = Math.max(1, Math.floor(frameBuffer.length / count));
+
+    for (let i = 0; i < count && i * step < frameBuffer.length; i++) {
+      const frameIndex = i * step;
+      const frameData = frameBuffer[frameIndex];
+      if (!frameData) continue;
+      const framePath = basePath.replace(/\.webm$/, `-keyframe-${i + 1}.jpg`);
+      writeFileSync(framePath, frameData);
+      keyFramePaths.push(framePath);
+    }
+
+    return keyFramePaths;
   }
 
   // Express server for page management
@@ -200,11 +298,22 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
       }
 
       const targetId = await getTargetId(page);
-      entry = { page, targetId };
+      entry = { page, targetId, consoleLogs: [] };
       registry.set(name, entry);
+
+      // Set up console log capture
+      await setupConsoleCapture(entry);
 
       // Clean up registry when page is closed (e.g., user clicks X)
       page.on("close", () => {
+        // Clean up console session
+        if (entry?.consoleSession) {
+          try {
+            entry.consoleSession.detach();
+          } catch {
+            // Ignore
+          }
+        }
         registry.delete(name);
       });
     }
@@ -228,6 +337,14 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
           // Ignore errors during cleanup
         }
       }
+      // Clean up console session
+      if (entry.consoleSession) {
+        try {
+          await entry.consoleSession.detach();
+        } catch {
+          // Ignore
+        }
+      }
       await entry.page.close();
       registry.delete(name);
       res.json({ success: true });
@@ -236,6 +353,51 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
 
     res.status(404).json({ error: "page not found" });
   });
+
+  // === Console Log Endpoints ===
+
+  // GET /pages/:name/console - get console logs for a page
+  app.get(
+    "/pages/:name/console",
+    (req: Request<{ name: string }>, res: Response) => {
+      const name = decodeURIComponent(req.params.name);
+      const entry = registry.get(name);
+
+      if (!entry) {
+        res.status(404).json({ error: "page not found" });
+        return;
+      }
+
+      const response: GetConsoleLogsResponse = {
+        logs: entry.consoleLogs,
+        count: entry.consoleLogs.length,
+      };
+      res.json(response);
+    }
+  );
+
+  // DELETE /pages/:name/console - clear console logs for a page
+  app.delete(
+    "/pages/:name/console",
+    (req: Request<{ name: string }>, res: Response) => {
+      const name = decodeURIComponent(req.params.name);
+      const entry = registry.get(name);
+
+      if (!entry) {
+        res.status(404).json({ error: "page not found" });
+        return;
+      }
+
+      const cleared = entry.consoleLogs.length;
+      entry.consoleLogs = [];
+
+      const response: ClearConsoleLogsResponse = {
+        success: true,
+        cleared,
+      };
+      res.json(response);
+    }
+  );
 
   // === Recording Endpoints ===
 
@@ -255,6 +417,9 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
         isRecording: entry.recording?.isRecording ?? false,
         startedAt: entry.recording?.startedAt?.toISOString(),
         frameCount: entry.recording?.frameCount,
+        consoleLogCount: entry.recording
+          ? entry.consoleLogs.length - entry.recording.recordingStartIndex
+          : undefined,
       };
       res.json(response);
     }
@@ -288,6 +453,9 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
           maxHeight: body.options?.maxHeight ?? 720,
           quality: body.options?.quality ?? 80,
           everyNthFrame: body.options?.everyNthFrame ?? 1,
+          captureConsoleLogs: body.options?.captureConsoleLogs ?? true,
+          extractKeyFrames: body.options?.extractKeyFrames ?? true,
+          keyFrameCount: body.options?.keyFrameCount ?? 5,
         };
 
         // Create CDP session for this page
@@ -307,6 +475,8 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
           frameBuffer: [],
           options: recordingOptions,
           outputPath,
+          consoleLogs: [],
+          recordingStartIndex: entry.consoleLogs.length, // Track where recording started
         };
 
         // Set up frame handler
@@ -374,6 +544,7 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
 
       try {
         const recording = entry.recording;
+        const stoppedAt = new Date();
         recording.isRecording = false;
 
         // Stop screencast
@@ -385,8 +556,13 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
         }
 
         // Calculate duration
-        const durationMs = Date.now() - recording.startedAt.getTime();
+        const durationMs = stoppedAt.getTime() - recording.startedAt.getTime();
         const frameCount = recording.frameCount;
+
+        // Get console logs captured during recording
+        const consoleLogs = recording.options.captureConsoleLogs
+          ? entry.consoleLogs.slice(recording.recordingStartIndex)
+          : [];
 
         // Encode frames to video
         let videoPath: string;
@@ -400,6 +576,46 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
           videoPath = recording.outputPath;
         }
 
+        // Extract key frames as images (for AI to view)
+        let keyFramePaths: string[] = [];
+        if (recording.options.extractKeyFrames && recording.frameBuffer.length > 0) {
+          keyFramePaths = extractKeyFrames(
+            recording.frameBuffer,
+            recording.options.keyFrameCount ?? 5,
+            recording.outputPath
+          );
+        }
+
+        // Get page info for summary
+        let pageUrl = "";
+        let pageTitle = "";
+        try {
+          pageUrl = entry.page.url();
+          pageTitle = await entry.page.title();
+        } catch {
+          // Page might be navigating
+        }
+
+        // Create recording summary JSON (AI-parseable)
+        const summary: RecordingSummary = {
+          recording: {
+            videoPath,
+            durationMs,
+            frameCount,
+            startedAt: recording.startedAt.toISOString(),
+            stoppedAt: stoppedAt.toISOString(),
+          },
+          consoleLogs,
+          keyFrames: keyFramePaths,
+          page: {
+            url: pageUrl,
+            title: pageTitle,
+          },
+        };
+
+        const summaryPath = recording.outputPath.replace(/\.webm$/, "-summary.json");
+        writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+
         // Clean up recording state
         entry.recording = undefined;
 
@@ -408,6 +624,9 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
           videoPath,
           durationMs,
           frameCount,
+          consoleLogs,
+          keyFramePaths,
+          summaryPath,
         };
         res.json(response);
       } catch (err) {
@@ -475,6 +694,8 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
   // Start the server
   const server = app.listen(port, () => {
     console.log(`HTTP API server running on port ${port}`);
+    console.log(`Console log capture: enabled`);
+    console.log(`Key frame extraction: enabled`);
   });
 
   // Track active connections for clean shutdown
@@ -510,6 +731,14 @@ export async function serve(options: ServeOptions = {}): Promise<DevBrowserServe
             await entry.recording.cdpSession.detach();
           } catch {
             // Ignore recording cleanup errors
+          }
+        }
+        // Clean up console session
+        if (entry.consoleSession) {
+          try {
+            await entry.consoleSession.detach();
+          } catch {
+            // Ignore
           }
         }
         await entry.page.close();
