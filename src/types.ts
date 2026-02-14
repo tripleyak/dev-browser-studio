@@ -166,3 +166,91 @@ export interface RecordingSummary {
     title: string;
   };
 }
+
+// === Perception Loop Types ===
+
+/** Configuration for a perception-action loop */
+export interface PerceptionLoopConfig {
+  /** Claude model to use (default: claude-sonnet-4-5-20250929) */
+  model?: string;
+  /** Max width for captured frames (default: 1024) */
+  maxWidth?: number;
+  /** Max height for captured frames (default: 768) */
+  maxHeight?: number;
+  /** JPEG quality 0-100 (default: 70) */
+  quality?: number;
+  /** Maximum perception-action cycles before stopping (default: 50) */
+  maxCycles?: number;
+  /** Maximum consecutive errors before stopping (default: 5) */
+  maxConsecutiveErrors?: number;
+  /** Minimum settle time after action in ms (default: 300) */
+  settleTimeMs?: number;
+  /** Timeout for Claude API call in ms (default: 30000) */
+  apiTimeoutMs?: number;
+  /** Frame diff threshold 0-1 for adaptive sampling (default: 0.05) */
+  frameDiffThreshold?: number;
+  /** Budget limits */
+  budget?: BudgetConfig;
+  /** Safety guardrails */
+  safety?: SafetyConfig;
+  /** Directory for audit logs (default: ./recordings) */
+  auditDir?: string;
+}
+
+/** Budget limits for a perception loop */
+export interface BudgetConfig {
+  /** Max perception cycles (default: 100) */
+  maxCycles?: number;
+  /** Max estimated input+output tokens (default: 500000) */
+  maxTokens?: number;
+  /** Max estimated cost in USD (default: 5.00) */
+  maxCostUSD?: number;
+  /** Max duration in ms (default: 600000 = 10 minutes) */
+  maxDurationMs?: number;
+}
+
+/** Safety guardrails for action validation */
+export interface SafetyConfig {
+  /** Regex patterns for URLs the agent cannot navigate to */
+  blockedURLPatterns?: string[];
+  /** Read-only mode — only allows navigation, scroll, and observation */
+  readOnlyMode?: boolean;
+}
+
+/** A parsed action from Claude's tool_use response */
+export interface AgentAction {
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/** Result of executing an action */
+export interface ActionResult {
+  success: boolean;
+  error?: string;
+}
+
+/** A single perception-action cycle entry */
+export interface CycleEntry {
+  cycle: number;
+  timestamp: number;
+  pageUrl: string;
+  action: AgentAction;
+  reasoning?: string;
+  result: ActionResult;
+  tokens?: { input: number; output: number };
+  durationMs: number;
+}
+
+/** Final result of a perception loop */
+export interface LoopResult {
+  success: boolean;
+  summary: string;
+  cycles: number;
+  extractedData?: Record<string, unknown>;
+  budgetUsed?: {
+    cycles: number;
+    estimatedTokens: number;
+    estimatedCostUSD: number;
+    durationMs: number;
+  };
+}
