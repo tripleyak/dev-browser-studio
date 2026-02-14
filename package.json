@@ -1,6 +1,6 @@
 {
   "name": "dev-browser-studio",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Browser automation studio with built-in video recording for UI/UX testing, debugging, and quality assurance",
   "type": "module",
   "imports": {

@@ -1,22 +1,22 @@
 # Dev Browser Studio
 
-**Version 1.1.0**
+**Version 1.2.0**
 
-> A powerful browser automation toolkit with built-in video recording for UI/UX testing, debugging, and quality assurance.
+> A browser automation toolkit with video recording and an autonomous AI perception-action loop for UI testing, data extraction, and browser agent development.
 
 ---
 
 ## What is Dev Browser Studio?
 
-Dev Browser Studio is a tool that lets you automate web browser actions (like clicking buttons, filling forms, and navigating websites) while **recording everything on video**. Think of it as having a robot that can use websites for you and record what it sees, so you can review it later.
+Dev Browser Studio is a tool that lets you automate web browser actions (like clicking buttons, filling forms, and navigating websites) while **recording everything on video**. It also includes an **autonomous perception-action loop** that uses Claude's Vision API to see, reason about, and interact with web pages — no selectors or scripting required.
 
 This is especially useful for:
 
+- **Autonomous browser agents** - Give the AI a task and watch it navigate, click, and extract data
 - **Testing websites** - Make sure buttons work, forms submit correctly, and pages load properly
+- **Data extraction** - Scrape structured data from pages using natural language instructions
 - **Debugging issues** - Record exactly what happens when something goes wrong
 - **Quality assurance (QA)** - Verify that your website looks and works correctly
-- **Documentation** - Create video evidence of how features work
-- **Training** - Record workflows to show others how to use a website
 
 ## Why Choose Dev Browser Studio?
 
@@ -34,18 +34,20 @@ Dev Browser Studio gives you **on-demand video recording**. You control exactly 
 | Video Available | Immediately | After page closes | N/A |
 | Console Log Capture | Yes, with timestamps | Manual setup required | No |
 | AI-Parseable Output | Key frames + JSON | No | No |
+| Autonomous Agent Loop | Yes (Claude Vision) | No | No |
 | Persistent Pages | Yes | No | No |
 | Recording Control | Full control | No control | N/A |
 
 ### Key Advantages
 
-1. **On-Demand Recording** - Start and stop recording whenever you want
-2. **Instant Access** - Get the video file immediately after stopping
-3. **Console Log Capture** - Automatically captures console.log/warn/error during recordings
-4. **AI-Parseable Output** - Extracts key frames as images + JSON summary for AI analysis
-5. **Persistent Pages** - Pages stay open between scripts, so you don't lose your place
-6. **AI-Friendly** - Designed to work with AI assistants like Claude Code
-7. **Simple API** - Easy to use, even if you're new to programming
+1. **Perception Loop** - Autonomous AI agent that sees, reasons, and acts on web pages
+2. **On-Demand Recording** - Start and stop recording whenever you want
+3. **Instant Access** - Get the video file immediately after stopping
+4. **Console Log Capture** - Automatically captures console.log/warn/error during recordings
+5. **AI-Parseable Output** - Extracts key frames as images + JSON summary for AI analysis
+6. **Persistent Pages** - Pages stay open between scripts, so you don't lose your place
+7. **Budget Controls** - Limit cycles, tokens, cost, and duration for agent runs
+8. **Simple API** - Easy to use, even if you're new to programming
 
 ---
 
@@ -96,7 +98,17 @@ ffmpeg -version
 
 > **Note**: If you don't have ffmpeg, the tool will save individual image frames instead of a video file. The video feature works best with ffmpeg installed.
 
-#### 4. Claude Code (optional but recommended)
+#### 4. Anthropic API Key (for perception loop)
+
+The autonomous perception loop requires a Claude API key:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+Get one at [console.anthropic.com](https://console.anthropic.com). Not needed for video recording or manual scripting.
+
+#### 5. Claude Code (optional but recommended)
 
 If you're using this as a Claude Code skill:
 
@@ -398,6 +410,100 @@ const button = await client.selectSnapshotRef("page-name", "e3");
 await button.click();
 ```
 
+### Perception Loop (Autonomous Agent)
+
+The perception loop lets an AI agent autonomously interact with web pages. It captures screenshots and ARIA snapshots, sends them to Claude Vision, receives structured actions, and executes them in a loop until the task is complete.
+
+#### Basic Usage
+
+```typescript
+import { connect } from "./src/client.js";
+import { PerceptionLoop } from "./src/perception-loop.js";
+
+const client = await connect();
+const page = await client.page("agent");
+await page.goto("https://books.toscrape.com");
+
+const loop = new PerceptionLoop({
+  maxCycles: 10,
+  budget: { maxEstimatedCostUSD: 0.50 },
+});
+
+const result = await loop.run(
+  client,
+  "agent",
+  "Find the cheapest book on this page. Return the title and price in extracted_data.",
+);
+
+console.log(result.success);        // true
+console.log(result.extractedData);  // { title: "...", price: "£13.99" }
+console.log(result.budgetUsed);     // { cycles: 3, estimatedTokens: 39359, ... }
+```
+
+#### How It Works
+
+Each cycle:
+1. **Capture** — Takes a JPEG screenshot + ARIA accessibility snapshot
+2. **Perceive** — Sends both to Claude Vision with the task and action history
+3. **Act** — Claude returns a structured tool_use action (click, type, scroll, navigate, etc.)
+4. **Execute** — The action runs on the page via Playwright
+5. **Repeat** — Until the agent calls `done` or `fail`, or a budget limit is hit
+
+The agent has 10 actions available: `click`, `type`, `scroll`, `navigate`, `keyboard`, `wait`, `hover`, `select`, `done`, and `fail`.
+
+#### Configuration
+
+```typescript
+const loop = new PerceptionLoop({
+  model: "claude-sonnet-4-5-20250929",  // Claude model (default: Sonnet)
+  maxCycles: 50,                         // Max perception-action cycles
+  maxConsecutiveErrors: 5,               // Stop after N errors in a row
+  maxSnapshotChars: 40000,               // Truncate large ARIA snapshots
+  settleTimeMs: 300,                     // Wait after each action for page to settle
+  budget: {
+    maxCycles: 100,                      // Hard cycle limit
+    maxTokens: 500000,                   // Total input+output tokens
+    maxCostUSD: 5.00,                    // Estimated cost cap
+    maxDurationMs: 600000,               // 10 minute timeout
+  },
+  safety: {
+    readOnlyMode: false,                 // Block clicks/typing (allow only scroll/navigate)
+    blockedURLPatterns: [".*admin.*"],    // Regex patterns to block navigation
+  },
+});
+```
+
+#### Audit Logging
+
+Every run produces an audit trail in `recordings/perception-<timestamp>/`:
+
+```
+perception-1705432100000/
+├── cycles.jsonl    # One JSON line per cycle (action, result, tokens, timing)
+├── summary.json    # Final result + budget usage
+└── frames/
+    ├── cycle-0.jpg # Screenshot at each cycle
+    ├── cycle-1.jpg
+    └── ...
+```
+
+#### Result Object
+
+```typescript
+interface LoopResult {
+  success: boolean;                    // Did the agent complete the task?
+  summary: string;                     // Agent's summary of what happened
+  cycles: number;                      // Total cycles used
+  extractedData?: Record<string, unknown>;  // Data the agent extracted
+  budgetUsed: {
+    cycles: number;
+    estimatedTokens: number;
+    estimatedCostUSD: number;
+    durationMs: number;
+  };
+}
+```
+
 ---
 
 ## API Reference
@@ -430,6 +536,23 @@ await button.click();
 | `captureConsoleLogs` | boolean | true | Capture console.log/warn/error during recording |
 | `extractKeyFrames` | boolean | true | Extract key frames as separate images for AI viewing |
 | `keyFrameCount` | number | 5 | Number of key frames to extract |
+
+### Perception Loop Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `model` | string | `claude-sonnet-4-5-20250929` | Claude model for vision |
+| `maxCycles` | number | 50 | Max perception-action cycles |
+| `maxConsecutiveErrors` | number | 5 | Stop after N consecutive errors |
+| `maxSnapshotChars` | number | 40000 | Truncate ARIA snapshots beyond this |
+| `settleTimeMs` | number | 300 | Wait time after actions (ms) |
+| `apiTimeoutMs` | number | 30000 | Claude API call timeout (ms) |
+| `budget.maxCycles` | number | 100 | Hard cycle budget limit |
+| `budget.maxTokens` | number | 500000 | Max total tokens |
+| `budget.maxCostUSD` | number | 5.00 | Max estimated cost |
+| `budget.maxDurationMs` | number | 600000 | Max duration (ms) |
+| `safety.readOnlyMode` | boolean | false | Block mutating actions |
+| `safety.blockedURLPatterns` | string[] | [] | Regex patterns to block |
 
 ### Page Options
 
@@ -624,20 +747,26 @@ npm run start-server -- --headless
 
 ```
 dev-browser-studio/
-├── README.md           # This file
-├── SKILL.md            # Skill instructions for AI assistants
-├── package.json        # Project dependencies
-├── tsconfig.json       # TypeScript configuration
-├── server.sh           # Server startup script
+├── README.md              # This file
+├── SKILL.md               # Skill instructions for AI assistants
+├── package.json           # Project dependencies
+├── tsconfig.json          # TypeScript configuration
+├── server.sh              # Server startup script
 ├── src/
-│   ├── index.ts        # Server code
-│   ├── client.ts       # Client API
-│   ├── video-encoder.ts # Video encoding
-│   ├── types.ts        # TypeScript types
-│   └── snapshot/       # Page inspection code
+│   ├── index.ts           # Server code
+│   ├── client.ts          # Client API
+│   ├── perception-loop.ts # Autonomous agent loop
+│   ├── vlm-client.ts      # Claude Vision API wrapper
+│   ├── tools.ts           # Agent action vocabulary + executor
+│   ├── frame-sampler.ts   # Perceptual hash change detection
+│   ├── budget.ts          # Cycle/token/cost/duration limits
+│   ├── audit-logger.ts    # JSONL audit trail + frame saving
+│   ├── video-encoder.ts   # Video encoding
+│   ├── types.ts           # TypeScript types
+│   └── snapshot/          # Page inspection code
 ├── scripts/
-│   └── start-server.ts # Server entry point
-└── recordings/         # Where videos are saved
+│   └── start-server.ts    # Server entry point
+└── recordings/            # Videos + perception loop audit logs
 ```
 
 ---
@@ -669,6 +798,17 @@ Dev Browser Studio is built on top of:
 ---
 
 ## Version History
+
+### v1.2.0
+- Autonomous perception-action loop using Claude Vision API
+- 10 agent actions: click, type, scroll, navigate, keyboard, wait, hover, select, done, fail
+- Budget controls: cycle, token, cost, and duration limits
+- ARIA snapshot truncation for large pages (configurable maxSnapshotChars)
+- Navigation recovery: page handle re-acquired after link clicks
+- Perceptual hash frame sampling (skip unchanged frames)
+- JSONL audit logging with per-cycle screenshots
+- Safety guardrails: read-only mode, URL pattern blocking, stuck detection
+- New dependencies: @anthropic-ai/sdk, sharp
 
 ### v1.1.0
 - Console log capture via CDP Runtime API
