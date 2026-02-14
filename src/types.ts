@@ -193,6 +193,8 @@ export interface PerceptionLoopConfig {
   budget?: BudgetConfig;
   /** Safety guardrails */
   safety?: SafetyConfig;
+  /** Max ARIA snapshot characters to send to the model (default: 40000) */
+  maxSnapshotChars?: number;
   /** Directory for audit logs (default: ./recordings) */
   auditDir?: string;
 }

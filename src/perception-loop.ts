@@ -23,6 +23,7 @@ const DEFAULTS = {
   settleTimeMs: 300,
   apiTimeoutMs: 30000,
   frameDiffThreshold: 0.05,
+  maxSnapshotChars: 40_000,
   auditDir: "./recordings",
 } as const;
 
@@ -46,6 +47,7 @@ export class PerceptionLoop {
       | "maxConsecutiveErrors"
       | "settleTimeMs"
       | "apiTimeoutMs"
+      | "maxSnapshotChars"
       | "auditDir"
     >
   > & { safety?: SafetyConfig };
@@ -71,6 +73,8 @@ export class PerceptionLoop {
         config?.maxConsecutiveErrors ?? DEFAULTS.maxConsecutiveErrors,
       settleTimeMs: config?.settleTimeMs ?? DEFAULTS.settleTimeMs,
       apiTimeoutMs: config?.apiTimeoutMs ?? DEFAULTS.apiTimeoutMs,
+      maxSnapshotChars:
+        config?.maxSnapshotChars ?? DEFAULTS.maxSnapshotChars,
       auditDir: config?.auditDir ?? DEFAULTS.auditDir,
       safety: config?.safety,
     };
@@ -88,7 +92,7 @@ export class PerceptionLoop {
     pageName: string,
     task: string,
   ): Promise<LoopResult> {
-    const page = await client.page(pageName);
+    let page = await client.page(pageName);
     const taskId = `perception-${Date.now()}`;
     const audit = new AuditLogger(this.config.auditDir, taskId);
 
@@ -96,9 +100,23 @@ export class PerceptionLoop {
       return client.selectSnapshotRef(pageName, ref);
     };
 
-    const executor = new ActionExecutor(page, resolveRef);
+    let executor = new ActionExecutor(page, resolveRef);
     const history: CycleEntry[] = [];
     let consecutiveErrors = 0;
+
+    // Re-acquire the page handle after navigation invalidates it
+    const reacquirePage = async (): Promise<boolean> => {
+      try {
+        page = await client.page(pageName);
+        executor = new ActionExecutor(page, resolveRef);
+        page.on("dialog", async (dialog) => {
+          await dialog.accept().catch(() => {});
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
     // Register dialog handler to prevent hanging
     page.on("dialog", async (dialog) => {
@@ -121,11 +139,33 @@ export class PerceptionLoop {
       }
 
       try {
-        // 1. Capture screenshot
-        const screenshotBuffer = await page.screenshot({
-          type: "jpeg",
-          quality: this.config.quality,
-        });
+        // 1. Capture screenshot (with page recovery on navigation)
+        let screenshotBuffer: Buffer;
+        try {
+          screenshotBuffer = await page.screenshot({
+            type: "jpeg",
+            quality: this.config.quality,
+          });
+        } catch (screenshotErr) {
+          // Page handle may be invalid after navigation — try to re-acquire
+          const errMsg = screenshotErr instanceof Error ? screenshotErr.message : "";
+          if (errMsg.includes("Target closed") || errMsg.includes("Target page")) {
+            const recovered = await reacquirePage();
+            if (recovered) {
+              // Wait for the new page to settle
+              await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+              this.sampler.forceCapture();
+              screenshotBuffer = await page.screenshot({
+                type: "jpeg",
+                quality: this.config.quality,
+              });
+            } else {
+              throw screenshotErr;
+            }
+          } else {
+            throw screenshotErr;
+          }
+        }
 
         // 2. Check if frame changed (skip if no visual change)
         const frameChanged = await this.sampler.hasChanged(screenshotBuffer);
@@ -137,10 +177,11 @@ export class PerceptionLoop {
         // Save frame for audit
         audit.saveFrame(cycle, screenshotBuffer);
 
-        // 3. Get ARIA snapshot
+        // 3. Get ARIA snapshot (truncated to fit context window)
         let ariaSnapshot: string;
         try {
-          ariaSnapshot = await client.getAISnapshot(pageName);
+          const raw = await client.getAISnapshot(pageName);
+          ariaSnapshot = truncateSnapshot(raw, this.config.maxSnapshotChars);
         } catch {
           ariaSnapshot = "(ARIA snapshot unavailable)";
         }
@@ -404,4 +445,20 @@ function safeUrl(page: Page): string {
   } catch {
     return "(unavailable)";
   }
+}
+
+/**
+ * Truncate an ARIA snapshot to fit within a character limit.
+ * Cuts at line boundaries and appends a truncation notice.
+ */
+function truncateSnapshot(snapshot: string, maxChars: number): string {
+  if (snapshot.length <= maxChars) return snapshot;
+
+  // Find last newline before the limit, leaving room for the notice
+  const notice = "\n\n... (ARIA snapshot truncated — showing first portion of page)";
+  const cutoff = maxChars - notice.length;
+  const lastNewline = snapshot.lastIndexOf("\n", cutoff);
+  const cutPoint = lastNewline > 0 ? lastNewline : cutoff;
+
+  return snapshot.slice(0, cutPoint) + notice;
 }
